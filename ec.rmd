@@ -1,0 +1,92 @@
+---
+title: "Monthly Electric Consumption"
+author: "Kevin Eng"
+date: "4/28/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+```
+
+# Introduction
+
+The goal of this analysis is to explore factors which influence electric 
+consumption at buildings within New York City. To accomplish this, we collect three data sets: one 
+which describes the surrounding weather, one which measures a buildings enery
+consumption, and one which desribees the physical characteristics of the building.
+
+Ideally, in order to seperate electric consumption due to seasonal trends, 
+hourly data would have been preferable. Indeed the inductive basis for making
+conclusions with high temporal resolution data would be stronger since we would 
+not have to worry about confounding with say energy differences due to holidays.
+Alas the highest resolution data set that was found was monthly.
+
+
+# Data
+
+Historical weather data was collected off NOAA's database. Fortunately, they have
+a simple API which allows for quick querying of basic weather data. A particular 
+aspect of their database is that NOAA only offers access to select daily weather
+summeries. Hourly, and monthly averages are only given as ``normal'' averages 
+which the NOAA defines as 30-year averages. The observations include daily
+minimum temperature, maximum temperature, perciptation, snow fall, and average 
+wind speed.
+
+# Data Processing
+
+The eletricity consumption and costs data file 
+
+```{r, include = FALSE, cache = TRUE}
+electric_data <- read_csv("./data/Electric-Consumption.csv")
+nycha_data <- read_csv("./data/NYCHA-Development.csv")
+weather_data <- read_csv("./data/weather-data.csv")
+
+nycha_data %<>% 
+    rename(TDS = 'TDS#',
+           Completion_Date = 'COMPLETION DATE') %>%
+    #drop row with missing TDS identifier
+    drop_na(TDS) %>% 
+    #expand rows with multiple observatios
+    separate_rows(TDS, sep = ",") %>%
+    #remove non numeric characters
+    mutate(TDS = str_remove(.$TDS, "\\*")) %>%
+    #convert character string to numeric
+    mutate(TDS = parse_number(.$TDS)) %>%
+    mutate(Completion_Date = mdy(.$Completion_Date))
+
+electric_data <- electric_data %>% 
+    rename(TDS = 'TDS #', 
+           KWH_Consump = 'Consumption (KWH)',
+           KWH_Charges = 'KWH Charges',
+           Revenue_Month = 'Revenue Month') %>%
+    mutate(Revenue_Month = parse_date_time(.$Revenue_Month, orders = "Y-m")) %>%
+    filter(KWH_Consump > 0) %>%
+    drop_na(TDS) %>%
+    group_by(TDS, Revenue_Month) %>%
+    summarise(KWH_Consump = sum(KWH_Consump), KWH_Charges = sum(KWH_Charges))
+    
+
+full_data <- electric_data %>% inner_join(nycha_data, by = 'TDS')
+
+```
+
+```{r, results = 'hide', echo=FALSE, fig.width=5, fig.height=3, fig.align='center', fig.cap = ''}
+full_data %>% 
+    group_by(Revenue_Month) %>%
+    summarise(KWH_Consump = sum(KWH_Consump)) %>%
+    ungroup() %>%
+    mutate(Year = year(Revenue_Month)) %>%
+    mutate(doy = as.numeric(format(.$Revenue_Month, '%j'))) %>%
+    group_by(Year) %>%
+    filter(KWH_Consump > 5*10^7) %>%
+    ggplot(aes(x = doy, y = KWH_Consump, color = factor(Year))) + 
+    geom_smooth(se = FALSE, method = 'loess', formula = y ~ x) +
+        xlab("Day of Year") +
+        ylab("Energy Consumption (KWH)") + 
+        labs(color = "Year") + 
+        ggtitle("Annual Energy Consumption")
+```
+
