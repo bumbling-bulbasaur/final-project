@@ -6,7 +6,7 @@ base_url <- "https://www.ncei.noaa.gov/access/services/data/v1"
 data_set <- "?dataset=daily-summaries"
 station_id <- "&stations=USW00094728"
 start_date <- "&startDate=2010-01-01"
-end_date <- "&endDate=2019-03-31"
+end_date <- "&endDate=2019-09-30"
 data_type <- "&dataTypes=TMAX,TMIN,PRCP,SNOW,AWND"
 units <- "&units=standard"
 
