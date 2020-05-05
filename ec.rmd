@@ -1,6 +1,6 @@
 ---
 title: "Monthly Electric Consumption"
-author: "Kevin Eng"
+author: "Kevin Eng  \n Git: https://github.com/bumbling-bulbasaur/final-project"
 date: "4/28/2020"
 output: pdf_document
 ---
@@ -174,14 +174,16 @@ group the data by year and month and compute the total energy consumption.
 From there we can create a plot of super imposed monthly energy consumption 
 curves over several years.
 
-```{r electric-trend, results = 'hide', echo=FALSE, out.width = "80%", out.height="50%", fig.align='center', fig.cap = ' '}
+```{r electric-trend, results = 'hide', echo=FALSE, out.width = "70%", out.height="40%", fig.align='center', fig.cap = ' '}
 full_data %>% 
     group_by(REVENUE_MONTH) %>%
     summarise(KWH_CONSUMP = sum(KWH_CONSUMP)) %>%
     ungroup() %>%
     mutate(YEAR = year(REVENUE_MONTH)) %>%
+    #convert dates to day year so we can compare across years
     mutate(DOY = as.numeric(format(.$REVENUE_MONTH, '%j'))) %>%
     group_by(YEAR) %>%
+    #drop unusually low readings (possibly incomplete measurement)
     filter(KWH_CONSUMP > 5*10^7) %>%
     ggplot(aes(x = DOY, y = KWH_CONSUMP, color = factor(YEAR))) + 
     geom_smooth(se = FALSE, method = 'loess', formula = y ~ x) +
@@ -206,6 +208,7 @@ ratio_data <- full_data %>%
     ungroup() %>%
     mutate(YEAR = year(REVENUE_MONTH)) %>%
     mutate(DOY = as.numeric(format(.$REVENUE_MONTH, '%j'))) %>%
+    #remove 2019 from estimation
     filter(YEAR < 2019) %>%
     group_by(YEAR) %>%
     summarise(MIN_CONSUMP = min(KWH_CONSUMP), MAX_CONSUMP = max(KWH_CONSUMP), 
@@ -228,7 +231,8 @@ ideas we need a normalized metric such as KWH per person from which we can compa
 distribution across the years. And since we are comparing the distribution of power consumption over the years, 
 the readings for 2019 should be discarded because it is incomplete. Any estimate of 
 the distribution for 2019 will be necessarily screwed due to the missing values. 
-```{r electric-dist, echo = FALSE, out.width = "80%", out.height="50%", fig.align='center', fig.cap = ' '}
+```{r electric-dist, echo = FALSE, out.width = "75%", out.height="45%", fig.align='center', fig.cap = ' '}
+#tmp_df contains mean of density estimate used later
 tmp_df <- full_data %>% 
     mutate(YEAR = year(REVENUE_MONTH)) %>%
     group_by(YEAR, TDS) %>%
@@ -239,12 +243,14 @@ tmp_df <- full_data %>%
     summarise(MEAN_TOTAL = mean(MEAN_CONSUMP)) %>% 
     filter(YEAR < 2019)
 
+#estimate mean power consumption per person
 mean_power <- full_data %>% 
     mutate(YEAR = year(REVENUE_MONTH)) %>%
     group_by(YEAR, TDS) %>%
     summarise(POPULATION = first(TOTAL_POPULATION), 
               KWH_CONSUMP = sum(KWH_CONSUMP),
               MEAN_CONSUMP = KWH_CONSUMP/POPULATION) %>%
+    #remove 2019 from consideration
     filter(YEAR < 2019)
 
 mean_power %>% ggplot(aes(MEAN_CONSUMP)) + 
@@ -269,8 +275,7 @@ estimate. From the mismatch, we can see our data has lighter tails resulting
 in taller peaks, but the estimated models seem perfectly adequate for exploratory 
 purposes so we proceed with using it.
 ```{r mixture-setup, include = FALSE}
-#generate tibble with mixture model information
-
+#three functions below help generate tibble with mixture model information
 mixture_model <- function(data) {
     mm_model <- normalmixEM(data$MEAN_CONSUMP, lambda = .5, mu = c(1000, 3500), sigma = c(200,1000))
 }
@@ -285,6 +290,8 @@ mixture_prob <- function(mm_model) {
         tibble(class_prob = mm_model$posterior[,1])
 }
 
+#need this to generate gride of points evaluated at normal density
+#this allows us to plot the normal density evaluated at different parameter ontop of data.
 density_values <- function(mm_model) {
     tlow <- tibble(MEAN_CONSUMP = seq(0,8200, by = 1), 
             y = mm_model$lambda[1] * dnorm(MEAN_CONSUMP, mean = mm_model$mu[1], sd = mm_model$sigma[1]),
